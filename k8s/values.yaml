@@ -3,6 +3,7 @@
 # needs the web. Every entry below has a reason; none is speculative.
 version: 1
 eval: gaia
+readiness: ready-to-pin
 runtimeClass: gvisor
 
 egress:
