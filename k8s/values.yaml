@@ -1,41 +1,74 @@
-# Kubernetes sandbox profile for eval-gaia
-# This eval declares supports_k8s: true upstream.
-#
-# Isolation: gVisor (runsc), pod-per-sample, never pooled across tenants.
-# Egress: deny-by-default. Ring 1 is a per-sandbox CiliumNetworkPolicy and is the
-# only unbypassable layer; the MITM proxy and the Inspect approver sit inside it.
+# Kubernetes sandbox profile — gaia (GAIA, 330 samples)
+# Egress is the crux here: GAIA is a browsing benchmark, so the sandbox genuinely
+# needs the web. Every entry below has a reason; none is speculative.
 version: 1
 eval: gaia
-
 runtimeClass: gvisor
-
-resources:
-  requests: { cpu: "1", memory: "4Gi", ephemeral-storage: "8Gi" }
-  limits:   { cpu: "1", memory: "4Gi", ephemeral-storage: "8Gi" }   # Guaranteed QoS
-
-security:
-  automountServiceAccountToken: false     # a mounted SA token is a cluster-takeover primitive
-  serviceAccountCreate: false
-  readOnlyRootFilesystem: false           # most task envs need to write
-  seccompProfile: RuntimeDefault
 
 egress:
   default: deny
-  allow: []
-    # Populate per-eval. Every entry needs a justification comment.
-    # The runner reaches TrustedRouter directly; the SANDBOX never calls models,
-    # so api.trustedrouter.com does NOT belong in this list.
   enforce_sni: true
-  tcp_only: true                          # kills QUIC domain-fronting
-  proxy: iron-proxy                       # Ring 2, audited; TLS termination is agent-detectable
+  tcp_only: true          # kills QUIC domain-fronting
+  allow:
+    # --- search: the hard requirement ---
+    - fqdn: html.duckduckgo.com
+      why: "inspect's web_browser() has no search tool; the agent must drive a search page"
+    - fqdn: duckduckgo.com
+      why: "apex host; DDG redirects and asset loads cross between apex and html.*"
+    # --- sources of truth named in the GAIA paper ---
+    - fqdn: "*.wikipedia.org"
+      why: "named in the paper as a canonical low-drift source"
+    - fqdn: "*.wikimedia.org"
+      why: "article bodies pull media from upload./commons.wikimedia.org"
+    - fqdn: arxiv.org
+      why: "named in the paper's source-of-truth list; appears in sample questions"
+    - fqdn: "*.arxiv.org"
+      why: "listings and PDFs come from export./static.arxiv.org; apex alone rate-limits"
+    - fqdn: paperswithcode.com
+      why: "third source named verbatim in the paper's source-of-truth sentence"
+    - fqdn: github.com
+      why: "listed in the annotator brief as an acceptable source of truth"
+    # --- infrastructure, not question content ---
+    - fqdn: pypi.org
+      why: "image is bare python:3.12-bookworm; inspect-tool-support installs at runtime"
+    - fqdn: files.pythonhosted.org
+      why: "PyPI serves only index metadata; wheel and sdist bodies come from here"
+
+# WARNING: never set allowDomains to ["*"]. The chart's
+# `{{- if has "*" .Values.allowDomains }}` branch drops toPorts entirely — no SNI,
+# no Host regex, all ports — and degenerates DNS to matchPattern "*".
+
+# ── UNRESOLVED, and it is a measurement question, not an infra one ────────────
+# Profile A (broad allowlist) preserves comparability with published GAIA numbers
+# but makes the Cilium ring close to decorative, putting the security burden on
+# the MITM proxy. Profile B (this file, deny-by-default) preserves containment but
+# measures something the GAIA authors deliberately declined to define — they refuse
+# to fix a source list, to enforce question diversity. Choosing B means our numbers
+# are NOT directly comparable to published GAIA scores, and that must be stated on
+# every published result.
+profile: B
+comparability_note: "deny-by-default narrows the reachable web; published-score comparability is NOT claimed"
+
+dataset:
+  gated: true
+  note: "GAIA is a gated HuggingFace dataset — automated access needs an accepted licence and a token; redistribution is not permitted"
 
 images:
-  # Every image MUST be pinned by sha256 digest before this eval can publish.
-  # For swe_bench use the Epoch AI rebuilt registry (MIT, 2290 images, 30 GiB Verified).
-  - name: null
-    digest: null
+  - purpose: inspect tool support
+    reference: docker.io/aisiuk/inspect-tool-support
+    pin: required   # resolve and pin by sha256 before first scored run
+  - purpose: per-pod DNS
+    reference: docker.io/coredns/coredns:1.14.6
+    pin: required
 
-notes: >
-  gVisor changes behaviour: it blocks raw packet creation, prevents chroot escapes
-  and breaks sshpass. A model scoring zero because a syscall was blocked is a wrong
-  published result, not a model failure. Classify and record at onboarding.
+resources:
+  requests: { cpu: "2", memory: "4Gi", ephemeral-storage: "2Gi" }
+  limits:   { cpu: "2", memory: "4Gi", ephemeral-storage: "4Gi" }
+  shm: 1Gi        # memory-backed emptyDir at /dev/shm, counts INSIDE the 4Gi
+  note: "chart defaults (500m / 2Gi) are too small for a browser; raise them"
+  typical_runtime_minutes: "8-25 typical, 45-90 worst case"
+
+security:
+  automountServiceAccountToken: false
+  serviceAccountCreate: false
+  seccompProfile: RuntimeDefault
