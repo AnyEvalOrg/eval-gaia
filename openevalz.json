@@ -1,0 +1,61 @@
+{
+  "openevalz_version": 1,
+  "eval": {
+    "id": "gaia",
+    "slug": "gaia",
+    "title": "GAIA: A Benchmark for General AI Assistants",
+    "group": "Assistants",
+    "tags": [
+      "Agent"
+    ],
+    "source": "core"
+  },
+  "upstream": {
+    "repo": "https://github.com/UKGovernmentBEIS/inspect_evals",
+    "path": "src/inspect_evals/gaia",
+    "inspect_ai": "0.3.260",
+    "eval_version": "3-B",
+    "dependency": "gaia"
+  },
+  "execution": {
+    "class": "sandbox-k8s",
+    "cost_class": "high",
+    "sandbox": [
+      "solver"
+    ],
+    "requires_internet": true,
+    "fast": false,
+    "supports_k8s": true,
+    "environment": ""
+  },
+  "tasks": [
+    {
+      "name": "gaia",
+      "samples": 165
+    },
+    {
+      "name": "gaia_level1",
+      "samples": 53
+    },
+    {
+      "name": "gaia_level2",
+      "samples": 86
+    },
+    {
+      "name": "gaia_level3",
+      "samples": 26
+    }
+  ],
+  "total_samples": 330,
+  "external_assets": [
+    {
+      "type": "huggingface",
+      "source": "gaia-benchmark/GAIA",
+      "state": "pinned"
+    }
+  ],
+  "scaffolds": [
+    "baseline"
+  ],
+  "generated": "2026-08-25"
+}
